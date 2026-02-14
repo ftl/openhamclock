@@ -7317,6 +7317,7 @@ const WSJTX_ENABLED = process.env.WSJTX_ENABLED !== 'false'; // enabled by defau
 const WSJTX_RELAY_KEY = process.env.WSJTX_RELAY_KEY || ''; // auth key for remote relay agent
 const WSJTX_MAX_DECODES = 500; // max decodes to keep in memory
 const WSJTX_MAX_AGE = 60 * 60 * 1000; // 60 minutes (configurable via client)
+const WSJTX_MULTICAST_ADDRESS = process.env.WSJTX_MULTICAST_ADDRESS || '';
 
 // WSJT-X protocol magic number
 const WSJTX_MAGIC = 0xADBCCBDA;
@@ -8033,8 +8034,16 @@ app.get("/api/n3fjp/qsos", (req, res) => {
 // Start UDP listener
 let wsjtxSocket = null;
 if (WSJTX_ENABLED) {
+  console.log(`[WSJT-X] ENABLED`);
   try {
-    wsjtxSocket = dgram.createSocket('udp4');
+    if (WSJTX_MULTICAST_ADDRESS != '') {
+      wsjtxSocket = dgram.createSocket({
+        type: 'udp4',
+        reuseAddr: true // needed for Multicast
+      });
+    } else {
+      wsjtxSocket = dgram.createSocket('udp4');
+    }
     
     wsjtxSocket.on('message', (buf, rinfo) => {
       const msg = parseWSJTXMessage(buf);
@@ -8050,7 +8059,14 @@ if (WSJTX_ENABLED) {
       console.log(`[WSJT-X] UDP listener on ${addr.address}:${addr.port}`);
     });
     
-    wsjtxSocket.bind(WSJTX_UDP_PORT, '0.0.0.0');
+    // wsjtxSocket.addMembership(WSJTX_MULTICAST_ADDRESS);
+
+    wsjtxSocket.bind(WSJTX_UDP_PORT, '0.0.0.0', () => {
+      if (WSJTX_MULTICAST_ADDRESS != '') {
+        wsjtxSocket.addMembership(WSJTX_MULTICAST_ADDRESS);
+        console.log(`[WSJT-X] listening on UDP multicast address ${WSJTX_MULTICAST_ADDRESS}`);
+      } 
+    });
   } catch (e) {
     console.error(`[WSJT-X] Failed to start UDP listener: ${e.message}`);
   }
@@ -8733,7 +8749,10 @@ app.listen(PORT, '0.0.0.0', () => {
   if (WSJTX_RELAY_KEY) {
     console.log(`  🔁 WSJT-X relay endpoint enabled (POST /api/wsjtx/relay)`);
   }
-if (N1MM_ENABLED) {
+  if (WSJTX_MULTICAST_ADDRESS != '') {
+    console.log(`  🔁 WSJT-X listening to mutlicast address ${WSJTX_MULTICAST_ADDRESS}`)
+  }
+  if (N1MM_ENABLED) {
     console.log(`  📥 N1MM UDP listener on port ${N1MM_UDP_PORT}`);
   }
   if (AUTO_UPDATE_ENABLED) {
